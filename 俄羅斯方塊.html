@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>經典俄羅斯方塊 - 絢麗特效版</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 2rem;
+            letter-spacing: 2px;
+        }
+
+        .game-container {
+            display: flex;
+            align-items: flex-start;
+            background: #2b2b2b;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            border: 4px solid #444;
+            background-color: #000;
+        }
+
+        .side-panel {
+            margin-left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 120px;
+        }
+
+        .info-box {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .info-title {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .info-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #00ffcc;
+        }
+
+        #level {
+            color: #ffcc00;
+        }
+
+        .controls {
+            font-size: 0.8rem;
+            color: #ccc;
+            line-height: 1.6;
+            background: #3a3a3a;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>TETRIS</h1>
+
+    <div class="game-container">
+        <canvas id="tetris" width="200" height="400"></canvas>
+        
+        <div class="side-panel">
+            <div class="info-box">
+                <div class="info-title">SCORE</div>
+                <div id="score" class="info-value">0</div>
+            </div>
+
+            <div class="info-box">
+                <div class="info-title">LEVEL</div>
+                <div id="level" class="info-value">1</div>
+            </div>
+            
+            <div class="controls">
+                <strong>操作說明：</strong><br>
+                ← / → : 左右移動<br>
+                ↑ : 旋轉方塊<br>
+                ↓ : 加速下落<br>
+                空白鍵 : 瞬間下落
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+
+        context.scale(20, 20);
+
+        // 新增：用來存放消除特效粒子的陣列
+        let particles = [];
+
+        // 新增：產生爆炸粒子的函式
+        function createParticles(gridX, gridY, color) {
+            // 每個方格產生 4 個碎屑粒子
+            const count = 4; 
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: gridX + Math.random(), // 在方格範圍內隨機分佈
+                    y: gridY + Math.random(),
+                    vx: (Math.random() - 0.5) * 0.1, // 左右噴散速度
+                    vy: (Math.random() - 0.8) * 0.08, // 向上微噴的速度
+                    color: color,
+                    alpha: 1, // 初始透明度
+                    size: Math.random() * 0.15 + 0.08 // 粒子大小
+                });
+            }
+        }
+
+        // 新增：更新粒子狀態（位置、重力、透明度）
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.004; // 模擬重力加速度向下墜
+                p.alpha -= 0.03; // 慢慢淡出
+
+                // 當粒子完全透明時，從陣列中移除釋放記憶體
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // 新增：繪製粒子
+        function drawParticles() {
+            particles.forEach(p => {
+                context.save();
+                context.globalAlpha = p.alpha; // 設定透明度
+                context.fillStyle = p.color;
+                context.fillRect(p.x, p.y, p.size, p.size);
+                context.restore(); // 恢復畫布狀態，不影響其他元件
+            });
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            outer: for (let y = arena.length - 1; y > 0; --y) {
+                for (let x = 0; x < arena[y].length; ++x) {
+                    if (arena[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+
+                // 修改：在整行被消掉之前，捕捉方塊顏色並觸發粒子特效
+                for (let x = 0; x < arena[y].length; ++x) {
+                    createParticles(x, y, colors[arena[y][x]]);
+                }
+
+                const row = arena.splice(y, 1)[0].fill(0);
+                arena.unshift(row);
+                ++y;
+
+                player.score += rowCount * 10;
+                rowCount *= 2;
+            }
+        }
+
+        function collide(arena, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                       (arena[y + o.y] &&
+                        arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        function createPiece(type) {
+            if (type === 'T') {
+                return [[0, 0, 0], [1, 1, 1], [0, 1, 0]];
+            } else if (type === 'O') {
+                return [[2, 2], [2, 2]];
+            } else if (type === 'L') {
+                return [[0, 3, 0], [0, 3, 0], [0, 3, 3]];
+            } else if (type === 'J') {
+                return [[0, 4, 0], [0, 4, 0], [4, 4, 0]];
+            } else if (type === 'I') {
+                return [[0, 5, 0, 0], [0, 5, 0, 0], [0, 5, 0, 0], [0, 5, 0, 0]];
+            } else if (type === 'S') {
+                return [[0, 6, 6], [6, 6, 0], [0, 0, 0]];
+            } else if (type === 'Z') {
+                return [[7, 7, 0], [0, 7, 7], [0, 0, 0]];
+            }
+        }
+
+        function drawMatrix(matrix, offset) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        context.fillStyle = colors[value];
+                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawMatrix(arena, {x: 0, y: 0});
+            drawMatrix(player.matrix, player.pos);
+            
+            // 新增：繪製粒子特效
+            drawParticles();
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerHardDrop() {
+            while (!collide(arena, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(arena, player);
+            playerReset();
+            arenaSweep();
+            updateScore();
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(arena, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerReset() {
+            const pieces = 'ILJOTSZ';
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+            
+            if (collide(arena, player)) {
+                alert('遊戲結束！您的最終得分是: ' + player.score);
+                arena.forEach(row => row.fill(0));
+                particles = []; // 死亡時清空粒子
+                player.score = 0;
+                updateScore();
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = player.score;
+            const currentLevel = Math.floor(player.score / 50) + 1;
+            document.getElementById('level').innerText = currentLevel;
+            dropInterval = Math.max(100, 1000 - (currentLevel - 1) * 100);
+        }
+
+        const colors = [
+            null,
+            '#FF0D72', // T
+            '#0DC2FF', // O
+            '#0DFF72', // L
+            '#F538FF', // J
+            '#FF8E0D', // I
+            '#FFE135', // S
+            '#3877FF', // Z
+        ];
+
+        const arena = createMatrix(10, 20);
+
+        const player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+        };
+
+        document.addEventListener('keydown', event => {
+            if (event.keyCode === 37) {
+                playerMove(-1);
+            } else if (event.keyCode === 39) {
+                playerMove(1);
+            } else if (event.keyCode === 40) {
+                playerDrop();
+            } else if (event.keyCode === 38) {
+                playerRotate(1);
+            } else if (event.keyCode === 32) {
+                playerHardDrop();
+            }
+        });
+
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+
+        function update(time = 0) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            // 修改：在每影格的更新循環中，加入粒子的物理運算
+            updateParticles();
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        playerReset();
+        updateScore();
+        update();
+    </script>
+</body>
+</html>
