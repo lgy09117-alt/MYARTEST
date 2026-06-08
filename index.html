@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>經典俄羅斯方塊 - 絢麗特效版</title>
+    <title>經典俄羅斯方塊 - 落點預示版</title>
     <style>
         body {
             background-color: #1a1a1a;
@@ -114,51 +114,76 @@
 
         context.scale(20, 20);
 
-        // 新增：用來存放消除特效粒子的陣列
         let particles = [];
 
-        // 新增：產生爆炸粒子的函式
         function createParticles(gridX, gridY, color) {
-            // 每個方格產生 4 個碎屑粒子
             const count = 4; 
             for (let i = 0; i < count; i++) {
                 particles.push({
-                    x: gridX + Math.random(), // 在方格範圍內隨機分佈
+                    x: gridX + Math.random(), 
                     y: gridY + Math.random(),
-                    vx: (Math.random() - 0.5) * 0.1, // 左右噴散速度
-                    vy: (Math.random() - 0.8) * 0.08, // 向上微噴的速度
+                    vx: (Math.random() - 0.5) * 0.1, 
+                    vy: (Math.random() - 0.8) * 0.08, 
                     color: color,
-                    alpha: 1, // 初始透明度
-                    size: Math.random() * 0.15 + 0.08 // 粒子大小
+                    alpha: 1, 
+                    size: Math.random() * 0.15 + 0.08 
                 });
             }
         }
 
-        // 新增：更新粒子狀態（位置、重力、透明度）
         function updateParticles() {
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.004; // 模擬重力加速度向下墜
-                p.alpha -= 0.03; // 慢慢淡出
+                p.vy += 0.004; 
+                p.alpha -= 0.03; 
 
-                // 當粒子完全透明時，從陣列中移除釋放記憶體
                 if (p.alpha <= 0) {
                     particles.splice(i, 1);
                 }
             }
         }
 
-        // 新增：繪製粒子
         function drawParticles() {
             particles.forEach(p => {
                 context.save();
-                context.globalAlpha = p.alpha; // 設定透明度
+                context.globalAlpha = p.alpha; 
                 context.fillStyle = p.color;
                 context.fillRect(p.x, p.y, p.size, p.size);
-                context.restore(); // 恢復畫布狀態，不影響其他元件
+                context.restore(); 
             });
+        }
+
+        // 新增：繪製落點預示（陰影方塊）的函式
+        function drawGhost() {
+            if (!player.matrix) return;
+
+            let ghostY = player.pos.y;
+            // 模擬方塊不斷往下移，直到發生碰撞為止
+            while (!collide(arena, { pos: { x: player.pos.x, y: ghostY + 1 }, matrix: player.matrix })) {
+                ghostY++;
+            }
+
+            // 開始繪製半透明的陰影
+            context.save();
+            context.globalAlpha = 0.25; // 設定 25% 透明度
+            
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        context.fillStyle = colors[value];
+                        // 繪製陰影主體
+                        context.fillRect(x + player.pos.x, y + ghostY, 1, 1);
+                        
+                        // 額外加上微弱的白邊框，讓陰影在疊加時更有層次感
+                        context.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                        context.lineWidth = 0.05;
+                        context.strokeRect(x + player.pos.x, y + ghostY, 1, 1);
+                    }
+                });
+            });
+            context.restore();
         }
 
         function arenaSweep() {
@@ -170,7 +195,6 @@
                     }
                 }
 
-                // 修改：在整行被消掉之前，捕捉方塊顏色並觸發粒子特效
                 for (let x = 0; x < arena[y].length; ++x) {
                     createParticles(x, y, colors[arena[y][x]]);
                 }
@@ -239,10 +263,16 @@
             context.fillStyle = '#000';
             context.fillRect(0, 0, canvas.width, canvas.height);
 
+            // 1. 先畫已經固定住的地圖
             drawMatrix(arena, {x: 0, y: 0});
+            
+            // 2. 再畫落點預示陰影（必須夾在中間，才不會遮擋玩家控制的實體方塊）
+            drawGhost();
+            
+            // 3. 畫玩家目前的實體方塊
             drawMatrix(player.matrix, player.pos);
             
-            // 新增：繪製粒子特效
+            // 4. 最上層畫消行爆炸粒子
             drawParticles();
         }
 
@@ -296,7 +326,7 @@
             if (collide(arena, player)) {
                 alert('遊戲結束！您的最終得分是: ' + player.score);
                 arena.forEach(row => row.fill(0));
-                particles = []; // 死亡時清空粒子
+                particles = []; 
                 player.score = 0;
                 updateScore();
             }
@@ -383,7 +413,6 @@
                 playerDrop();
             }
 
-            // 修改：在每影格的更新循環中，加入粒子的物理運算
             updateParticles();
 
             draw();
